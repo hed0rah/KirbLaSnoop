@@ -97,6 +97,12 @@ struct Cli {
     #[arg(long, default_value_t = 60, value_name = "SECS")]
     udp_idle: u64,
 
+    /// cap on tracked udp source addresses. past this, datagrams are still
+    /// captured but sources are untracked and unanswered, which bounds memory
+    /// and reflection under a flood of forged sources
+    #[arg(long, default_value_t = 4096, value_name = "N")]
+    udp_max_peers: usize,
+
     #[command(subcommand)]
     cmd: Option<Cmd>,
 }
@@ -219,7 +225,14 @@ fn main() -> Result<()> {
                     set.spawn(listener::tcp::run(name, bind, prof, logger));
                 }
                 config::Proto::Udp => {
-                    set.spawn(listener::udp::run(name, bind, prof, logger, cli.udp_idle));
+                    set.spawn(listener::udp::run(
+                        name,
+                        bind,
+                        prof,
+                        logger,
+                        cli.udp_idle,
+                        cli.udp_max_peers,
+                    ));
                 }
             }
         }

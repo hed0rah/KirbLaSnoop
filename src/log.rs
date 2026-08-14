@@ -516,6 +516,31 @@ impl Logger {
         });
     }
 
+    /// operational warning: printed and recorded, but nothing stops.
+    pub fn warn(&self, proto: &str, name: &str, msg: &str) {
+        let now = ts::now_millis();
+        // the default listener name already carries the proto, e.g. "udp:0"
+        eprintln!("[{}] WARNING {name}: {msg}", ts::clock(now));
+        self.emit(&Event {
+            ts: ts::iso8601(now),
+            ts_ms: now,
+            event: "warning",
+            proto,
+            listener: Some(name),
+            conn: None,
+            local: None,
+            peer: None,
+            orig_dst: None,
+            dir: None,
+            hint: None,
+            len: None,
+            rule: None,
+            note: Some(msg),
+            data: None,
+            data_truncated: None,
+        });
+    }
+
     pub fn error(&self, proto: &str, name: &str, conn: Option<u64>, msg: &str) {
         let now = ts::now_millis();
         eprintln!("[{}] error   {proto} {name} {msg}", ts::clock(now));

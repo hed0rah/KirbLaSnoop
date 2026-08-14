@@ -157,9 +157,18 @@ client that batches two commands into one segment gets one reply, and a message 
 across two reads may not match at all. Profiles need a framing layer (delimiter or length
 prefix) before this is trustworthy on a binary protocol.
 
-A udp profile that responds is a reflector. Listeners bind `0.0.0.0` by default and udp
-replies go to whatever source address claimed to send, so a responding profile on a live
-network can be abused. `echo` is the worst case.
+A udp profile that responds answers forged source addresses, because udp has no handshake
+and the source in the header is whatever the sender wrote. On a non-loopback bind that
+makes kirblasnoop a reflector, and an amplifier whenever the reply exceeds what triggered
+it. Measured against a 1-byte datagram: `smtp` returns 50 bytes and `ftp` 49, since their
+connect banners fire on a peer's first message and a rule replies to the same message.
+`echo` and `ack` are 1x and uninteresting to an attacker.
+
+kirblasnoop warns at startup when a responding profile binds a non-loopback address, and
+caps tracked sources at `--udp-max-peers` (4096). Past the cap, datagrams are still
+captured under a single overflow stream but sources are untracked and unanswered, which
+bounds both memory and reflection. The warning is not a substitute for binding loopback or
+an isolated interface.
 
 No icmp, and no tls termination. Icmp needs raw sockets and `CAP_NET_RAW`; the logo is
 aspirational. Tls connections are captured as ciphertext, with the ClientHello readable.

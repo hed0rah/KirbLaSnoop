@@ -24,11 +24,13 @@ pub async fn run(
     profile: Option<Arc<Compiled>>,
     logger: Arc<Logger>,
     idle_secs: u64,
+    max_peers: usize,
 ) -> Result<()> {
     let sock = UdpSocket::bind(&bind)
         .await
         .with_context(|| format!("binding udp {bind}"))?;
-    let local = sock.local_addr()?.to_string();
+    let addr = sock.local_addr()?;
+    let local = addr.to_string();
     logger.listening(
         "udp",
         &name,
@@ -36,7 +38,34 @@ pub async fn run(
         profile.as_ref().map(|p| p.name.as_str()).unwrap_or("none"),
     );
 
+    // a udp source address is whatever the sender wrote in the header, so a
+    // profile that replies will answer forged sources too. that makes this an
+    // open reflector for anyone who can reach the port, and an amplifier
+    // whenever the reply is larger than what triggered it.
+    if let Some(p) = &profile
+        && p.responds()
+        && !addr.ip().is_loopback()
+    {
+        let ratio = match p.max_response_bytes() {
+            Some(n) => format!("a 1-byte datagram draws up to {n} bytes"),
+            None => "replies mirror the request size".to_string(),
+        };
+        logger.warn(
+            "udp",
+            &name,
+            &format!(
+                "profile {:?} replies to unverified source addresses on a non-loopback bind. \
+                 udp sources are trivially forged, so this is an open reflector: {ratio}, \
+                 sent wherever the sender claimed to be. bind loopback or an isolated \
+                 interface unless that is intended",
+                p.name
+            ),
+        );
+    }
+
     let mut peers: HashMap<SocketAddr, Peer> = HashMap::new();
+    let mut overflow_conn: Option<u64> = None;
+    let mut overflow_count: u64 = 0;
     let mut buf = vec![0u8; BUF];
     let mut sweep = tokio::time::interval(std::time::Duration::from_secs(SWEEP_SECS));
     sweep.tick().await; // the first tick is immediate
@@ -54,6 +83,33 @@ pub async fn run(
                 let now = ts::now_millis();
                 let peer = peer_addr.to_string();
 
+                let data = &buf[..n];
+                let known = peers.contains_key(&peer_addr);
+
+                // a flood of forged sources would otherwise grow the peer table
+                // for the whole idle window. past the cap we keep capturing but
+                // stop tracking and stop replying, which bounds both the memory
+                // and the reflection.
+                if !known && peers.len() >= max_peers {
+                    let conn = *overflow_conn.get_or_insert_with(|| {
+                        let id = logger.next_conn_id();
+                        logger.open("udp", &name, id, &local, "overflow", None);
+                        logger.warn(
+                            "udp",
+                            &name,
+                            &format!(
+                                "peer table hit {max_peers} entries. further new sources are \
+                                 captured under one overflow stream, untracked and unanswered. \
+                                 raise --udp-max-peers if this is legitimate traffic"
+                            ),
+                        );
+                        id
+                    });
+                    overflow_count += 1;
+                    logger.data("udp", &name, conn, &peer, Dir::Rx, data, None);
+                    continue;
+                }
+
                 let mut first = false;
                 let entry = peers.entry(peer_addr).or_insert_with(|| {
                     first = true;
@@ -67,7 +123,6 @@ pub async fn run(
                     logger.open("udp", &name, conn, &local, &peer, None);
                 }
 
-                let data = &buf[..n];
                 logger.data("udp", &name, conn, &peer, Dir::Rx, data, None);
 
                 if let Some(p) = &profile {
@@ -90,6 +145,21 @@ pub async fn run(
                     logger.close("udp", &name, p.conn, &addr.to_string(), "idle timeout");
                     false
                 });
+
+                // once the table drains, close out the overflow stream so a
+                // later burst is reported again rather than folded into it
+                if peers.len() < max_peers
+                    && let Some(id) = overflow_conn.take()
+                {
+                    logger.close(
+                        "udp",
+                        &name,
+                        id,
+                        "overflow",
+                        &format!("{overflow_count} untracked datagrams"),
+                    );
+                    overflow_count = 0;
+                }
             }
         }
     }

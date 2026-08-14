@@ -106,6 +106,32 @@ pub struct CompiledRule {
 }
 
 impl Compiled {
+    /// true if this profile ever sends anything back.
+    pub fn responds(&self) -> bool {
+        self.on_connect.as_ref().is_some_and(|a| !a.is_silent())
+            || self.rules.iter().any(|r| !r.action.is_silent())
+    }
+
+    /// worst-case bytes emitted in reply to one inbound message. on_connect
+    /// fires on a peer's first message and a rule can fire on that same
+    /// message, so the two add. None means a rule echoes, which tracks the
+    /// request size rather than exceeding it.
+    pub fn max_response_bytes(&self) -> Option<usize> {
+        let echoes = self.on_connect.as_ref().is_some_and(|a| a.echo)
+            || self.rules.iter().any(|r| r.action.echo);
+        if echoes {
+            return None;
+        }
+        let banner = self.on_connect.as_ref().map_or(0, |a| a.payload.len());
+        let rule = self
+            .rules
+            .iter()
+            .map(|r| r.action.payload.len())
+            .max()
+            .unwrap_or(0);
+        Some(banner + rule)
+    }
+
     /// walk rules in order, first match wins.
     pub fn eval(&self, data: &[u8], first: bool) -> Option<(&str, &Action)> {
         self.rules
