@@ -1,0 +1,23 @@
+[package]
+name = "kirblasnoop"
+version = "0.1.0"
+edition = "2024"
+description = "packet vacuum and fake-service rig for reverse engineering"
+license = "MIT"
+
+[[bin]]
+name = "kls"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+strip = true
+
+[dependencies]
+anyhow = "1.0.104"
+base64 = "0.23.1"
+clap = { version = "4.6.1", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal", "time"] }
+toml = "1.1.4"

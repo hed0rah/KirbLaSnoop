@@ -1,0 +1,43 @@
+name = "smtp"
+description = "SMTP that accepts everything, for malware that wants to mail home"
+
+on_connect = { text = "220 mail.example.com ESMTP Postfix\r\n" }
+
+[[rule]]
+name = "ehlo"
+when = { starts_with = "EHLO", ignore_case = true }
+# deliberately does NOT advertise PIPELINING: the rule engine answers once per
+# tcp read, so a client that batches several commands into one segment would
+# get one reply and then hang waiting for the rest.
+respond.text = "250-mail.example.com\r\n250-SIZE 10240000\r\n250-AUTH LOGIN PLAIN\r\n250 8BITMIME\r\n"
+
+[[rule]]
+name = "helo"
+when = { starts_with = "HELO", ignore_case = true }
+respond.text = "250 mail.example.com\r\n"
+
+[[rule]]
+name = "auth"
+when = { starts_with = "AUTH", ignore_case = true }
+respond.text = "235 2.7.0 Authentication successful\r\n"
+
+[[rule]]
+name = "data"
+when = { starts_with = "DATA", ignore_case = true }
+respond.text = "354 End data with <CR><LF>.<CR><LF>\r\n"
+
+[[rule]]
+name = "end-of-data"
+when = { ends_with = "\r\n.\r\n" }
+respond.text = "250 2.0.0 Ok: queued as 0000000000\r\n"
+
+[[rule]]
+name = "quit"
+when = { starts_with = "QUIT", ignore_case = true }
+respond = { text = "221 2.0.0 Bye\r\n", close = true }
+
+# MAIL FROM, RCPT TO, RSET, NOOP and anything else: just say yes
+[[rule]]
+name = "accept-all"
+when = { any = true }
+respond.text = "250 2.1.0 Ok\r\n"

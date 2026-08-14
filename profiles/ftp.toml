@@ -1,0 +1,41 @@
+name = "ftp"
+description = "FTP control channel that accepts any login"
+
+on_connect = { text = "220 (vsFTPd 3.0.5)\r\n" }
+
+[[rule]]
+name = "user"
+when = { starts_with = "USER", ignore_case = true }
+respond.text = "331 Please specify the password.\r\n"
+
+[[rule]]
+name = "pass"
+when = { starts_with = "PASS", ignore_case = true }
+respond.text = "230 Login successful.\r\n"
+
+[[rule]]
+name = "syst"
+when = { starts_with = "SYST", ignore_case = true }
+respond.text = "215 UNIX Type: L8\r\n"
+
+[[rule]]
+name = "pwd"
+when = { starts_with = "PWD", ignore_case = true }
+respond.text = "257 \"/\" is the current directory\r\n"
+
+[[rule]]
+name = "type"
+when = { starts_with = "TYPE", ignore_case = true }
+respond.text = "200 Switching to Binary mode.\r\n"
+
+[[rule]]
+name = "quit"
+when = { starts_with = "QUIT", ignore_case = true }
+respond = { text = "221 Goodbye.\r\n", close = true }
+
+# PASV, PORT, LIST, RETR, STOR: refuse the data channel but stay connected,
+# so the client keeps issuing commands and we learn its full repertoire.
+[[rule]]
+name = "no-data-channel"
+when = { any = true }
+respond.text = "425 Use PORT or PASV first.\r\n"

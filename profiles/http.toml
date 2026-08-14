@@ -1,0 +1,29 @@
+name = "http"
+description = "minimal HTTP/1.1 server: 200 with an empty body, 404-free"
+
+# answers every method with 200 so a client never branches into an error
+# path you did not mean to explore. Connection: close keeps each request in
+# its own capture stream, which is easier to read than a keep-alive blob.
+
+[[rule]]
+name = "options"
+when = { starts_with = "OPTIONS", ignore_case = true }
+respond.text = "HTTP/1.1 200 OK\r\nAllow: GET,POST,PUT,HEAD,OPTIONS\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+respond.close = true
+
+[[rule]]
+name = "head"
+when = { starts_with = "HEAD", ignore_case = true }
+respond.text = "HTTP/1.1 200 OK\r\nServer: nginx/1.24.0\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\n"
+respond.close = true
+
+[[rule]]
+name = "any-request"
+when = { contains = "HTTP/1." }
+respond.text = "HTTP/1.1 200 OK\r\nServer: nginx/1.24.0\r\nContent-Type: text/plain\r\nContent-Length: 3\r\nConnection: close\r\n\r\nok\n"
+respond.close = true
+
+# something spoke to port 80 without speaking http. keep it, do not answer.
+[[rule]]
+name = "not-http"
+when = { any = true }

@@ -1,0 +1,10 @@
+name = "ack"
+description = "answer any binary message with a single 0x06 ACK byte"
+
+# starting point for unknown binary protocols. many clients block until they
+# see any response at all; one byte is often enough to unblock the next
+# message and reveal more of the protocol than silence would.
+[[rule]]
+name = "ack-anything"
+when = { any = true }
+respond = { hex = "06" }

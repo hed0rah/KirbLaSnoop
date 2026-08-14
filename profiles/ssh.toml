@@ -1,0 +1,12 @@
+name = "ssh"
+description = "SSH identification banner only; captures the client's KEXINIT"
+
+# we cannot complete a key exchange, but sending the banner is enough to get
+# the client to send SSH_MSG_KEXINIT, which fingerprints it precisely: its
+# version string, algorithm list and ordering.
+on_connect = { text = "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13\r\n" }
+
+# say nothing further. the raw dump has the KEXINIT.
+[[rule]]
+name = "capture-kexinit"
+when = { any = true }

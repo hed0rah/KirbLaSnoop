@@ -1,0 +1,6 @@
+name = "silent"
+description = "pure vacuum: accept everything, say nothing. the default posture."
+
+# no on_connect, no rules. the peer connects, talks into the void, and we
+# record every byte. use this first on any unknown target -- anything you
+# send back changes its behaviour and contaminates the capture.

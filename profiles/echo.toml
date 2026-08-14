@@ -1,0 +1,9 @@
+name = "echo"
+description = "reflect every message back verbatim (RFC 862)"
+
+# useful for proving a link works end to end, and for spotting clients that
+# parse their own output back and reveal a framing layer.
+[[rule]]
+name = "reflect"
+when = { any = true }
+respond = { echo = true }
