@@ -3,3 +3,6 @@
 tmp-tests/
 *.pcap
 *.bin
+
+# working notes, not for publication
+/internal_docs
