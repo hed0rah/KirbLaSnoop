@@ -43,9 +43,12 @@ struct Cli {
     #[arg(short, long, value_name = "NAME|PATH")]
     profile: Option<String>,
 
-    /// where to look up profiles by name
-    #[arg(long, default_value = "profiles", value_name = "DIR", global = true)]
-    profile_dir: PathBuf,
+    /// where to look up profiles by name. defaults to the first of
+    /// ./profiles, $XDG_DATA_HOME/kirblasnoop/profiles,
+    /// ~/.local/share/kirblasnoop/profiles, /usr/local/share/kirblasnoop/profiles,
+    /// /usr/share/kirblasnoop/profiles that exists
+    #[arg(long, value_name = "DIR", global = true)]
+    profile_dir: Option<PathBuf>,
 
     /// root for capture output; a timestamped run dir is created inside
     #[arg(short = 'd', long, default_value = "captures", value_name = "DIR")]
@@ -136,8 +139,10 @@ enum Cmd {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    let profile_dir = resolve_profile_dir(cli.profile_dir.as_deref());
+
     match &cli.cmd {
-        Some(Cmd::Profiles) => return list_profiles(&cli.profile_dir),
+        Some(Cmd::Profiles) => return list_profiles(&profile_dir),
         Some(Cmd::Transparent {
             port,
             uid,
@@ -171,7 +176,7 @@ fn main() -> Result<()> {
         if profiles.contains_key(spec) {
             continue;
         }
-        let path = profile::resolve(spec, &cli.profile_dir)?;
+        let path = profile::resolve(spec, &profile_dir)?;
         let compiled = profile::load(&path)?;
         eprintln!(
             "kls: loaded profile {:?} ({} rules) from {}",
@@ -266,6 +271,30 @@ fn main() -> Result<()> {
         }
         Ok(())
     })
+}
+
+/// an installed kls is run from wherever the investigation lives, so a
+/// relative default would find nothing. the repo checkout still wins when
+/// present, which keeps development working without a flag.
+fn resolve_profile_dir(explicit: Option<&std::path::Path>) -> PathBuf {
+    if let Some(p) = explicit {
+        return p.to_path_buf();
+    }
+    let mut candidates = vec![PathBuf::from("profiles")];
+    if let Some(x) = std::env::var_os("XDG_DATA_HOME") {
+        candidates.push(PathBuf::from(x).join("kirblasnoop/profiles"));
+    }
+    if let Some(h) = std::env::var_os("HOME") {
+        candidates.push(PathBuf::from(h).join(".local/share/kirblasnoop/profiles"));
+    }
+    candidates.push(PathBuf::from("/usr/local/share/kirblasnoop/profiles"));
+    candidates.push(PathBuf::from("/usr/share/kirblasnoop/profiles"));
+
+    candidates
+        .iter()
+        .find(|p| p.is_dir())
+        .cloned()
+        .unwrap_or_else(|| candidates.remove(0))
 }
 
 /// print, never apply. the user asked for copy-paste rules so the tool stays
