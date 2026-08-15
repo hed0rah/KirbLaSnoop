@@ -104,7 +104,7 @@ struct Cli {
     #[arg(long, value_name = "ADDR:PORT")]
     upstream: Option<String>,
 
-    /// pin listeners to a network interface by name, e.g. wlp0s20f3. an
+    /// pin listeners to a network interface by name, e.g. eth0. an
     /// interface can carry several addresses and ipv6 privacy addresses
     /// rotate, so this is steadier than binding one address
     #[arg(long, value_name = "NAME")]
