@@ -98,6 +98,12 @@ struct Cli {
     #[arg(long, default_value = "1G", value_name = "SIZE", value_parser = stream::parse_size)]
     max_run_bytes: u64,
 
+    /// forward to this address instead of answering, e.g. 192.0.2.5:443.
+    /// both directions are logged; a listener with an upstream ignores its
+    /// profile. tcp only for now
+    #[arg(long, value_name = "ADDR:PORT")]
+    upstream: Option<String>,
+
     /// pin listeners to a network interface by name, e.g. wlp0s20f3. an
     /// interface can carry several addresses and ipv6 privacy addresses
     /// rotate, so this is steadier than binding one address
@@ -233,10 +239,13 @@ fn main() -> Result<()> {
             let logger = logger.clone();
             let bind = l.bind.clone();
             let iface = l.iface.clone().or_else(|| cli.iface.clone());
+            let upstream = l.upstream.clone().or_else(|| cli.upstream.clone());
 
             match l.proto {
                 config::Proto::Tcp => {
-                    set.spawn(listener::tcp::run(name, bind, prof, logger, iface));
+                    set.spawn(listener::tcp::run(
+                        name, bind, prof, logger, iface, upstream,
+                    ));
                 }
                 config::Proto::Udp => {
                     set.spawn(listener::udp::run(
@@ -248,6 +257,13 @@ fn main() -> Result<()> {
                         cli.udp_max_peers,
                         iface,
                     ));
+                    if upstream.is_some() {
+                        eprintln!(
+                            "kls: --upstream is tcp only; the udp listener on {} will \
+                             capture but not forward",
+                            l.bind
+                        );
+                    }
                 }
             }
         }

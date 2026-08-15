@@ -32,6 +32,9 @@ pub struct Listener {
     /// pin this listener to an interface by name
     #[serde(default)]
     pub iface: Option<String>,
+    /// forward to this address instead of answering
+    #[serde(default)]
+    pub upstream: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -79,6 +82,7 @@ pub fn parse_spec(spec: &str) -> Result<Listener> {
         profile,
         name: None,
         iface: None,
+        upstream: None,
     })
 }
 

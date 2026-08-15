@@ -106,6 +106,47 @@ PREROUTING on the box that routes for it.
 Udp gets no `WANTED` line. REDIRECT does not carry the original destination for datagrams,
 which needs TPROXY. Udp listeners still capture normally.
 
+## forwarding
+
+With `--upstream`, kls relays instead of answering, logging both directions:
+
+```sh
+kls tcp:9443 --upstream 192.0.2.10:443
+```
+
+`rx` is what the client sent, `tx` is what came back. Nothing is rewritten, so the
+captured streams are byte-exact copies of the wire: a 3 MB transfer through the splice
+arrives with an identical checksum and the `.tx.bin` body matches the upstream file
+exactly. A client that half-closes still receives the full response.
+
+A listener with an upstream ignores its profile; forwarding and answering are exclusive,
+and kls says so at startup if both are configured. An upstream that refuses the connection
+is logged and the client is closed with `upstream unreachable`, rather than looking like
+the peer hung up.
+
+Tcp only for now. A udp listener with `--upstream` set captures but does not forward.
+
+One consequence worth knowing: a relay never has to know where one message ends and the
+next begins, so forwarding is unaffected by the per-read matching limit that applies to
+profile rules.
+
+### getting another device's traffic to kls
+
+kls has to be in the path. Three ways, in rough order of how invasive they are:
+
+- Configure the device to talk to kls directly: a host and port setting, a proxy setting,
+  or its dns server if you are using the `dns` profile.
+- Forward a port on the router that serves the device to the box running kls. Preserve the
+  original destination port wherever the router allows it. Which port a device reaches for
+  is often the most diagnostic single fact in a capture, and rewriting it discards that.
+- Make the box running kls the device's gateway, then redirect locally in PREROUTING.
+
+Only the third recovers the original destination *address*. `SO_ORIGINAL_DST` reads the
+conntrack of the machine that performed the NAT, so a router-side forward rewrites the
+destination one hop upstream and the original address is gone before the packet arrives.
+kls reports nothing in that case rather than guessing, which is correct but worth
+expecting.
+
 ## protocol hints
 
 Inbound messages are classified from their opening bytes and the guess is printed beside

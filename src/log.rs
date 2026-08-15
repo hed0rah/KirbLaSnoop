@@ -429,11 +429,10 @@ impl Logger {
             }
         }
 
-        // only inbound bytes are worth guessing at; we already know what we sent
-        let hint = match dir {
-            Dir::Rx => crate::classify::classify(data),
-            Dir::Tx => None,
-        };
+        // both directions are classified: once forwarding exists, outbound
+        // bytes are the upstream's, not ours, and a ServerHello is as worth
+        // naming as a ClientHello
+        let hint = crate::classify::classify(data);
 
         let now = ts::now_millis();
         let tags = format!(
