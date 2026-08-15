@@ -12,11 +12,26 @@ network and read what it tried to say. The binary is `kls`.
 
 ```sh
 cargo build --release      # target/release/kls
-cargo test                 # 30 unit tests
+cargo test                 # 37 unit tests
 ```
 
-Linux only. No runtime dependencies; the transparent mode calls `getsockopt` directly
-rather than linking a libc crate.
+Linux only. No runtime dependencies; the socket options are called directly rather than
+linking a libc crate.
+
+To install:
+
+```sh
+sudo install -m 0755 target/release/kls /usr/local/bin/kls
+sudo install -d -m 0755 /usr/local/share/kirblasnoop/profiles
+sudo install -m 0644 profiles/*.toml /usr/local/share/kirblasnoop/profiles/
+sudo setcap cap_net_bind_service=+ep /usr/local/bin/kls   # optional, for ports below 1024
+```
+
+Profiles are looked up in `--profile-dir`, then `./profiles`, then
+`$XDG_DATA_HOME/kirblasnoop/profiles`, `~/.local/share/kirblasnoop/profiles`,
+`/usr/local/share/kirblasnoop/profiles` and `/usr/share/kirblasnoop/profiles`. A checkout
+wins when you are standing in one. The `setcap` line is what lets an unprivileged `kls`
+bind 53, 80 or 443, which also keeps capture files out of root ownership.
 
 ## quick start
 
@@ -35,10 +50,16 @@ A listener spec is `proto:port`, `proto:addr:port`, with an optional `=profile` 
 ```sh
 kls tcp:9000 udp:9000              # pure vacuum, both transports
 kls tcp:80=http udp:53             # a different fake service per port
-kls udp:127.0.0.1:9000             # bind one interface
+kls udp:127.0.0.1:9000             # bind one address
+kls udp:53 --iface eth0            # bind one interface by name
 kls -c capture.toml                # listeners from a config file
 kls profiles                       # list available profiles
 ```
+
+`--iface` pins listeners with `SO_BINDTODEVICE`, which needs no privileges. It is steadier
+than binding an address when the interface has several: ipv6 privacy addressing rotates
+them, so an address-bound listener on a wireless interface is aimed at a moving target. A
+name that does not exist is an error, not a silent no-op.
 
 The default posture is silence. Nothing is sent back unless a profile says so, because
 anything you send changes the target's behaviour and contaminates the capture.
@@ -125,13 +146,33 @@ when = { starts_with = "QUIT", ignore_case = true }
 respond = { text = "221 2.0.0 Bye\r\n", close = true }
 ```
 
+### answering dns
+
+Fixed bytes cannot answer a dns query, because the reply has to echo the transaction id
+and question section. `respond.dns` builds the reply from the request instead:
+
+```toml
+[[rule]]
+when = { any = true }
+respond.dns = { a = "192.0.2.10", ttl = 60 }
+```
+
+Point a device's resolver at that listener and every name resolves to the address you
+chose, so the device keeps working while you watch, and the connections it then makes
+arrive at your other listeners with the hostname already known. A query type with no
+address configured gets NOERROR and zero answers rather than NXDOMAIN, which stops the
+client retrying without telling it the name is absent. Works over udp and over tcp, where
+the 2-byte length prefix is handled.
+
+### matchers and responses
+
 Matchers: `starts_with`, `ends_with`, `contains`, `prefix_hex`, `contains_hex`, `len`,
 `min_len`, `max_len`, `first_only`, `ignore_case`, `any`. Every field present must hold.
-Responses carry `text` (with `\r`, `\n`, `\xNN` escapes), `hex`, `file`, `echo`, `delay_ms`,
-`repeat` and `close`. Payloads are resolved once at load time, so the hot path never
+Responses carry `text` (with `\r`, `\n`, `\xNN` escapes), `hex`, `file`, `echo`, `dns`,
+`delay_ms`, `repeat` and `close`. Payloads are resolved once at load time, so the hot path never
 touches the filesystem.
 
-Shipped: `silent`, `echo`, `ack`, `http`, `smtp`, `ftp`, `ssh`. Adding one is adding a file
+Shipped: `silent`, `echo`, `ack`, `dns`, `http`, `smtp`, `ftp`, `ssh`. Adding one is adding a file
 to `profiles/`.
 
 ## capture limits

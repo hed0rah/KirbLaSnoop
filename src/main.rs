@@ -3,11 +3,13 @@
 
 mod classify;
 mod config;
+mod dns;
 mod hexdump;
 mod listener;
 mod log;
 mod origdst;
 mod profile;
+mod sockopt;
 mod stream;
 mod ts;
 
@@ -95,6 +97,12 @@ struct Cli {
     /// stop writing to disk after the run produces this much; 0 disables
     #[arg(long, default_value = "1G", value_name = "SIZE", value_parser = stream::parse_size)]
     max_run_bytes: u64,
+
+    /// pin listeners to a network interface by name, e.g. wlp0s20f3. an
+    /// interface can carry several addresses and ipv6 privacy addresses
+    /// rotate, so this is steadier than binding one address
+    #[arg(long, value_name = "NAME")]
+    iface: Option<String>,
 
     /// retire a silent udp peer after this many seconds
     #[arg(long, default_value_t = 60, value_name = "SECS")]
@@ -224,10 +232,11 @@ fn main() -> Result<()> {
                 .cloned();
             let logger = logger.clone();
             let bind = l.bind.clone();
+            let iface = l.iface.clone().or_else(|| cli.iface.clone());
 
             match l.proto {
                 config::Proto::Tcp => {
-                    set.spawn(listener::tcp::run(name, bind, prof, logger));
+                    set.spawn(listener::tcp::run(name, bind, prof, logger, iface));
                 }
                 config::Proto::Udp => {
                     set.spawn(listener::udp::run(
@@ -237,6 +246,7 @@ fn main() -> Result<()> {
                         logger,
                         cli.udp_idle,
                         cli.udp_max_peers,
+                        iface,
                     ));
                 }
             }

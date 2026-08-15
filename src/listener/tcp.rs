@@ -3,7 +3,7 @@ use crate::profile::{Action, Compiled};
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpSocket, TcpStream};
 
 const BUF: usize = 64 * 1024;
 
@@ -12,10 +12,31 @@ pub async fn run(
     bind: String,
     profile: Option<Arc<Compiled>>,
     logger: Arc<Logger>,
+    iface: Option<String>,
 ) -> Result<()> {
-    let sock = TcpListener::bind(&bind)
-        .await
-        .with_context(|| format!("binding tcp {bind}"))?;
+    // pinning to a device has to happen before bind, so an interface-bound
+    // listener is built from an unbound socket rather than TcpListener::bind
+    let sock = match &iface {
+        Some(dev) => {
+            let addr: std::net::SocketAddr = bind
+                .parse()
+                .with_context(|| format!("parsing tcp bind address {bind}"))?;
+            let s = if addr.is_ipv4() {
+                TcpSocket::new_v4()
+            } else {
+                TcpSocket::new_v6()
+            }
+            .context("creating tcp socket")?;
+            crate::sockopt::bind_to_device(&s, dev)?;
+            s.set_reuseaddr(true).ok();
+            s.bind(addr)
+                .with_context(|| format!("binding tcp {bind} on {dev}"))?;
+            s.listen(1024).context("listening")?
+        }
+        None => TcpListener::bind(&bind)
+            .await
+            .with_context(|| format!("binding tcp {bind}"))?,
+    };
     let local_addr = sock.local_addr().ok();
     let local = sock.local_addr()?.to_string();
     logger.listening(
@@ -122,8 +143,17 @@ async fn send(
     if action.delay_ms > 0 {
         tokio::time::sleep(std::time::Duration::from_millis(action.delay_ms)).await;
     }
+    let built;
     let payload: &[u8] = if action.echo {
         received
+    } else if let Some(ans) = &action.dns {
+        match crate::dns::reply_tcp(received, ans) {
+            Some(v) => {
+                built = v;
+                &built
+            }
+            None => return Ok(action.close),
+        }
     } else {
         &action.payload
     };

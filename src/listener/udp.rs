@@ -25,10 +25,16 @@ pub async fn run(
     logger: Arc<Logger>,
     idle_secs: u64,
     max_peers: usize,
+    iface: Option<String>,
 ) -> Result<()> {
     let sock = UdpSocket::bind(&bind)
         .await
         .with_context(|| format!("binding udp {bind}"))?;
+    // for udp this takes effect after bind, filtering which device's packets
+    // the socket will accept
+    if let Some(dev) = &iface {
+        crate::sockopt::bind_to_device(&sock, dev)?;
+    }
     let addr = sock.local_addr()?;
     let local = addr.to_string();
     logger.listening(
@@ -183,8 +189,18 @@ async fn reply(
     if action.delay_ms > 0 {
         tokio::time::sleep(std::time::Duration::from_millis(action.delay_ms)).await;
     }
+    let built;
     let payload: &[u8] = if action.echo {
         received
+    } else if let Some(ans) = &action.dns {
+        match crate::dns::reply(received, ans) {
+            Some(v) => {
+                built = v;
+                &built
+            }
+            // not a query we can answer; stay silent rather than send noise
+            None => return,
+        }
     } else {
         &action.payload
     };

@@ -1,0 +1,22 @@
+name = "dns"
+description = "answer every A query with one address, so a device stays functional while you watch it"
+
+# point a device's resolver at this listener and every name it looks up
+# resolves to the address below. two things follow: you see the names, and
+# the connections that follow arrive at your other listeners with the
+# hostname already known.
+#
+# the address here is the loopback default, which is only useful for local
+# testing. to aim a separate device at this box, copy the file and set `a` to
+# the address that device can reach you on, then run:
+#
+#   kls udp:<your-lan-ip>:53 --profile ./dns-lab.toml
+#
+# aaaa is deliberately left unset. an AAAA query then gets NOERROR with no
+# answers, which pushes the client to ask for A instead of reaching a v6
+# address you are not listening on.
+
+[[rule]]
+name = "answer-a"
+when = { any = true }
+respond.dns = { a = "127.0.0.1", ttl = 60 }

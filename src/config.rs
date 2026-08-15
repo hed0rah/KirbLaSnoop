@@ -29,6 +29,9 @@ pub struct Listener {
     pub profile: Option<String>,
     #[serde(default)]
     pub name: Option<String>,
+    /// pin this listener to an interface by name
+    #[serde(default)]
+    pub iface: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -75,6 +78,7 @@ pub fn parse_spec(spec: &str) -> Result<Listener> {
         bind,
         profile,
         name: None,
+        iface: None,
     })
 }
 

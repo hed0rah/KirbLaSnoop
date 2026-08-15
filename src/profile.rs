@@ -71,6 +71,24 @@ pub struct Respond {
     /// hang up after sending
     #[serde(default)]
     pub close: bool,
+    /// build a dns reply from the query instead of sending fixed bytes
+    pub dns: Option<DnsRespond>,
+}
+
+/// answers to hand out. a type with no address configured gets NOERROR and
+/// zero answers, which stops the client retrying without claiming the name
+/// does not exist.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DnsRespond {
+    pub a: Option<String>,
+    pub aaaa: Option<String>,
+    #[serde(default = "default_ttl")]
+    pub ttl: u32,
+}
+
+fn default_ttl() -> u32 {
+    60
 }
 
 /// a Respond flattened into bytes, resolved once at load time so the hot
@@ -81,11 +99,12 @@ pub struct Action {
     pub echo: bool,
     pub delay_ms: u64,
     pub close: bool,
+    pub dns: Option<crate::dns::Answer>,
 }
 
 impl Action {
     pub fn is_silent(&self) -> bool {
-        self.payload.is_empty() && !self.echo
+        self.payload.is_empty() && !self.echo && self.dns.is_none()
     }
 }
 
@@ -117,8 +136,11 @@ impl Compiled {
     /// message, so the two add. None means a rule echoes, which tracks the
     /// request size rather than exceeding it.
     pub fn max_response_bytes(&self) -> Option<usize> {
-        let echoes = self.on_connect.as_ref().is_some_and(|a| a.echo)
-            || self.rules.iter().any(|r| r.action.echo);
+        let echoes = self.on_connect.as_ref().is_some_and(|a| a.echo || a.dns.is_some())
+            || self
+                .rules
+                .iter()
+                .any(|r| r.action.echo || r.action.dns.is_some());
         if echoes {
             return None;
         }
@@ -292,11 +314,29 @@ fn compile_respond(r: &Respond, base: &Path) -> Result<Action> {
     if let Some(n) = r.repeat {
         payload = payload.repeat(n);
     }
+    let dns = match &r.dns {
+        Some(d) => Some(crate::dns::Answer {
+            a: d
+                .a
+                .as_ref()
+                .map(|s| s.parse().with_context(|| format!("dns a = {s:?}")))
+                .transpose()?,
+            aaaa: d
+                .aaaa
+                .as_ref()
+                .map(|s| s.parse().with_context(|| format!("dns aaaa = {s:?}")))
+                .transpose()?,
+            ttl: d.ttl,
+        }),
+        None => None,
+    };
+
     Ok(Action {
         payload,
         echo: r.echo,
         delay_ms: r.delay_ms,
         close: r.close,
+        dns,
     })
 }
 
